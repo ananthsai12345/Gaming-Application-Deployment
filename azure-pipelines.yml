@@ -1,6 +1,5 @@
-# Docker
-# Build and push an image to Azure Container Registry
-# https://docs.microsoft.com/azure/devops/pipelines/languages/docker
+
+# CI/CD: Build, push, and deploy the gaming application
 
 trigger:
 - main
@@ -9,14 +8,12 @@ resources:
 - repo: self
 
 variables:
-  # Container registry service connection established during pipeline creation
   dockerRegistryServiceConnection: 'eaf502e0-fce3-4f9f-83d9-e9a93e5bf474'
+  azureResourceManagerServiceConnection: 'gaming-azure-connection'
   imageRepository: 'ananthsaigamingapplicationdeployment'
   containerRegistry: 'hostinggameacr2026.azurecr.io'
   dockerfilePath: '$(Build.SourcesDirectory)/Dockerfile'
   tag: '$(Build.BuildId)'
-
-  # Agent VM image name
   vmImageName: 'ubuntu-latest'
 
 stages:
@@ -24,12 +21,12 @@ stages:
   displayName: Build and push stage
   jobs:
   - job: Build
-    displayName: Build
+    displayName: Build Docker image
     pool:
       vmImage: $(vmImageName)
     steps:
     - task: Docker@2
-      displayName: Build and push an image to container registry
+      displayName: Build and push image to ACR
       inputs:
         command: buildAndPush
         repository: $(imageRepository)
@@ -37,3 +34,25 @@ stages:
         containerRegistry: $(dockerRegistryServiceConnection)
         tags: |
           $(tag)
+
+- stage: Deploy
+  displayName: Deploy to Azure Container Apps
+  dependsOn: Build
+  condition: succeeded()
+  jobs:
+  - job: Deploy
+    displayName: Update gaming application
+    pool:
+      vmImage: $(vmImageName)
+    steps:
+    - task: AzureCLI@2
+      displayName: Deploy new image
+      inputs:
+        azureSubscription: $(azureResourceManagerServiceConnection)
+        scriptType: bash
+        scriptLocation: inlineScript
+        inlineScript: |
+          az containerapp update \
+            --name devopscontainer \
+            --resource-group devopsdeployment \
+            --image "$(containerRegistry)/$(imageRepository):$(tag)"
